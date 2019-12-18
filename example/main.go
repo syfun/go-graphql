@@ -27,9 +27,9 @@ func main() {
 	client := graphql.New("http://localhost:8080/query", nil)
 
 	req := graphql.Request{
-		OperationName: "",
+		OperationName: "search",
 		Query: `query search($text: String!) {
-  search(text: $text) {
+  search(tex: $text) {
 	__typename
     ... on Human {
       id
@@ -51,7 +51,7 @@ func main() {
 	if err != nil {
 		log.Fatal(err)
 	}
-	prettyPrint(resp)
+	// prettyPrint(resp)
 
 	var humans []*Human
 	if err := resp.Guess("search", &humans); err != nil {
