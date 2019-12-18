@@ -1,15 +1,3 @@
-# go-graphql
-Golang GraphQL Client.
-
-## Installation
-
-```shell
-go get github.com/syfun/go-graphql
-```
-
-## Usage
-
-```go
 package main
 
 import (
@@ -71,6 +59,3 @@ func main() {
 	}
 	prettyPrint(humans)
 }
-
-
-```
