@@ -67,10 +67,6 @@ type Response struct {
 // var p Person
 // r.Guess("person", p)
 func (r *Response) Guess(name string, v interface{}) error {
-	if r.HasError() {
-		return r
-	}
-
 	if r.Data == nil {
 		return errors.New("guess error: has no data")
 	}
