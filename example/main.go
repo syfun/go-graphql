@@ -23,13 +23,13 @@ type Human struct {
 	Name string `json:"name"`
 }
 
-func main() {
+func search(variable graphql.JSON) {
 	client := graphql.New("http://localhost:8080/query", nil)
 
 	req := graphql.Request{
 		OperationName: "search",
 		Query: `query search($text: String!) {
-  search(tex: $text) {
+  search(text: $text) {
 	__typename
     ... on Human {
       id
@@ -45,17 +45,24 @@ func main() {
     }
   }
 }`,
-		Variable: graphql.JSON{"text": "a"},
+		Variable: variable,
 	}
 	resp, err := client.Do(context.Background(), &req)
 	if err != nil {
 		log.Fatal(err)
 	}
-	// prettyPrint(resp)
 
 	var humans []*Human
 	if err := resp.Guess("search", &humans); err != nil {
 		log.Fatal(err)
 	}
 	prettyPrint(humans)
+}
+
+func main() {
+	// success
+	search(graphql.JSON{"text": "a"})
+
+	// error
+	search(nil)
 }

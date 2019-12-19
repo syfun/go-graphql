@@ -151,5 +151,8 @@ func (c *Client) Do(ctx context.Context, req *Request) (*Response, error) {
 	if err := json.NewDecoder(httpResp.Body).Decode(&resp); err != nil {
 		return nil, fmt.Errorf("graphql do error: %w", err)
 	}
+	if resp.HasError() {
+		return nil, resp
+	}
 	return resp, nil
 }
