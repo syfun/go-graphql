@@ -103,8 +103,8 @@ func (r *Response) Error() string {
 type Client struct {
 	url string
 
-	// httpClient do the lower http request.
-	httpClient *http.Client
+	// HTTPClient do the lower http request.
+	HTTPClient *http.Client
 }
 
 // New create a graphql client with url and http client.
@@ -112,7 +112,7 @@ func New(url string, httpClient *http.Client) *Client {
 	if httpClient == nil {
 		httpClient = http.DefaultClient
 	}
-	return &Client{url: url, httpClient: httpClient}
+	return &Client{url: url, HTTPClient: httpClient}
 }
 
 func (c *Client) buildHTTPRequest(ctx context.Context, req *Request) (*http.Request, error) {
@@ -134,7 +134,7 @@ func (c *Client) Do(ctx context.Context, req *Request) (*Response, error) {
 	if err != nil {
 		return nil, fmt.Errorf("graphql do error: %w", err)
 	}
-	httpResp, err := c.httpClient.Do(httpReq)
+	httpResp, err := c.HTTPClient.Do(httpReq)
 	if err != nil {
 		// If we got an error, and the context has been canceled,
 		// the context's error is probably more useful.
