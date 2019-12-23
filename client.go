@@ -6,7 +6,10 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"io"
+	"mime/multipart"
 	"net/http"
+	"strconv"
 
 	"github.com/mitchellh/mapstructure"
 )
@@ -14,11 +17,37 @@ import (
 // JSON represents json type.
 type JSON map[string]interface{}
 
+// NamedReader is the interface that groups the basic Read methods and a Name method.
+type NamedReader interface {
+	io.Reader
+	Name() string
+}
+
 // Request represents graphql request body.
 type Request struct {
 	OperationName string `json:"operationName"`
 	Query         string `json:"query"`
-	Variable      JSON   `json:"variables"`
+	Variables     JSON   `json:"variables"`
+
+	Files []NamedReader
+}
+
+// NewRequest build new graphql request with operation name, query or mutation, and variables.
+func NewRequest(query, operationName string, variables JSON) *Request {
+	return &Request{
+		OperationName: operationName,
+		Query:         query,
+		Variables:     variables,
+	}
+}
+
+// NewUploadRequest build a new single upload request.
+func NewUploadRequest(query, operationName string, file ...NamedReader) *Request {
+	return &Request{
+		OperationName: operationName,
+		Query:         query,
+		Files:         file,
+	}
 }
 
 // SourceLocation represents a location in a Source.
@@ -70,6 +99,9 @@ func (r *Response) Guess(name string, v interface{}) error {
 	if r.Data == nil {
 		return errors.New("guess error: has no data")
 	}
+	if r.HasError() {
+		return r
+	}
 
 	d, ok := r.Data[name]
 	if !ok {
@@ -111,7 +143,7 @@ func New(url string, httpClient *http.Client) *Client {
 	return &Client{url: url, HTTPClient: httpClient}
 }
 
-func (c *Client) buildHTTPRequest(ctx context.Context, req *Request) (*http.Request, error) {
+func (c *Client) buildJSONRequest(ctx context.Context, req *Request) (*http.Request, error) {
 	var body bytes.Buffer
 	if err := json.NewEncoder(&body).Encode(req); err != nil {
 		return nil, fmt.Errorf("build http request error: %w", err)
@@ -124,12 +156,7 @@ func (c *Client) buildHTTPRequest(ctx context.Context, req *Request) (*http.Requ
 	return httpReq, nil
 }
 
-// Do exec graphql query or mutation.
-func (c *Client) Do(ctx context.Context, req *Request) (*Response, error) {
-	httpReq, err := c.buildHTTPRequest(ctx, req)
-	if err != nil {
-		return nil, fmt.Errorf("graphql do error: %w", err)
-	}
+func (c *Client) do(ctx context.Context, req *Request, httpReq *http.Request) (*Response, error) {
 	httpResp, err := c.HTTPClient.Do(httpReq)
 	if err != nil {
 		// If we got an error, and the context has been canceled,
@@ -151,4 +178,100 @@ func (c *Client) Do(ctx context.Context, req *Request) (*Response, error) {
 		return nil, resp
 	}
 	return resp, nil
+}
+
+// Do exec graphql query or mutation.
+func (c *Client) Do(ctx context.Context, query, operationName string, variables JSON) (*Response, error) {
+	req := NewRequest(query, operationName, variables)
+	httpReq, err := c.buildJSONRequest(ctx, req)
+	if err != nil {
+		return nil, fmt.Errorf("graphql do error: %w", err)
+	}
+	return c.do(ctx, req, httpReq)
+}
+
+func writeField(w *multipart.Writer, fieldname string, value interface{}) error {
+	b, err := json.Marshal(value)
+	if err != nil {
+		return fmt.Errorf("write field %v error: %w", fieldname, err)
+	}
+	if err := w.WriteField(fieldname, string(b)); err != nil {
+		return fmt.Errorf("write field %v error: %w", fieldname, err)
+	}
+	return nil
+}
+
+func writeFile(w *multipart.Writer, fieldname string, file NamedReader) error {
+	f, err := w.CreateFormFile(fieldname, file.Name())
+	if err != nil {
+		return fmt.Errorf("write file %v error: %w", fieldname, err)
+	}
+	if _, err := io.Copy(f, file); err != nil {
+		return fmt.Errorf("write file %v error: %w", fieldname, err)
+	}
+	return nil
+}
+
+func (c *Client) buildFormDataRequest(ctx context.Context, req *Request, single bool) (*http.Request, error) {
+	if req.Files == nil || len(req.Files) == 0 {
+		return nil, errors.New("build form data request error: has no files")
+	}
+	var body bytes.Buffer
+	w := multipart.NewWriter(&body)
+
+	var files []NamedReader
+	m := make(JSON)
+	if single {
+		files = req.Files[:1]
+		req.Variables = JSON{"file": nil}
+		m["0"] = []string{"variables.file"}
+	} else {
+		files = req.Files
+		s := []*struct{}{}
+		for i := range files {
+			m[strconv.Itoa(i)] = []string{fmt.Sprintf("variables.files.%v", i)}
+			s = append(s, nil)
+		}
+		req.Variables = JSON{"files": s}
+	}
+	if err := writeField(w, "operations", req); err != nil {
+		return nil, fmt.Errorf("build form data request error: %w", err)
+	}
+	if err := writeField(w, "map", m); err != nil {
+		return nil, fmt.Errorf("build form data request error: %w", err)
+	}
+	for i, file := range files {
+		if err := writeFile(w, strconv.Itoa(i), file); err != nil {
+			return nil, fmt.Errorf("build form data request error: %w", err)
+		}
+	}
+	w.Close()
+
+	fmt.Println(body.String())
+	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.url, &body)
+	if err != nil {
+		return nil, fmt.Errorf("build form data request error: %w", err)
+	}
+	httpReq.Header.Set("Content-Type", w.FormDataContentType())
+	return httpReq, nil
+}
+
+// SingleUpload implement [GraphQL multipart request specification](https://github.com/jaydenseric/graphql-multipart-request-spec)
+func (c *Client) SingleUpload(ctx context.Context, query, operationName string, file NamedReader) (*Response, error) {
+	req := NewUploadRequest(query, operationName, file)
+	httpReq, err := c.buildFormDataRequest(ctx, req, true)
+	if err != nil {
+		return nil, fmt.Errorf("graphql single upload error: %w", err)
+	}
+	return c.do(ctx, req, httpReq)
+}
+
+// MultiUpload implement [GraphQL multipart request specification](https://github.com/jaydenseric/graphql-multipart-request-spec)
+func (c *Client) MultiUpload(ctx context.Context, query, operationName string, file ...NamedReader) (*Response, error) {
+	req := NewUploadRequest(query, operationName, file...)
+	httpReq, err := c.buildFormDataRequest(ctx, req, false)
+	if err != nil {
+		return nil, fmt.Errorf("graphql single upload error: %w", err)
+	}
+	return c.do(ctx, req, httpReq)
 }
