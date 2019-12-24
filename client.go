@@ -247,7 +247,6 @@ func (c *Client) buildFormDataRequest(ctx context.Context, req *Request, single 
 	}
 	w.Close()
 
-	fmt.Println(body.String())
 	httpReq, err := http.NewRequestWithContext(ctx, "POST", c.url, &body)
 	if err != nil {
 		return nil, fmt.Errorf("build form data request error: %w", err)
