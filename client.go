@@ -131,8 +131,8 @@ func (r *Response) Error() string {
 type Client struct {
 	url string
 
-	// HTTPClient do the lower http request.
-	HTTPClient *http.Client
+	// httpClient do the lower http request.
+	httpClient *http.Client
 }
 
 // New create a graphql client with url and http client.
@@ -140,7 +140,15 @@ func New(url string, httpClient *http.Client) *Client {
 	if httpClient == nil {
 		httpClient = http.DefaultClient
 	}
-	return &Client{url: url, HTTPClient: httpClient}
+	return &Client{url: url, httpClient: httpClient}
+}
+
+// Copy a new graphql client with a http client.
+func (c *Client) Copy(httpClient *http.Client) *Client {
+	if httpClient == nil {
+		httpClient = http.DefaultClient
+	}
+	return &Client{url: c.url, httpClient: httpClient}
 }
 
 func (c *Client) buildJSONRequest(ctx context.Context, req *Request) (*http.Request, error) {
@@ -157,7 +165,7 @@ func (c *Client) buildJSONRequest(ctx context.Context, req *Request) (*http.Requ
 }
 
 func (c *Client) do(ctx context.Context, req *Request, httpReq *http.Request) (*Response, error) {
-	httpResp, err := c.HTTPClient.Do(httpReq)
+	httpResp, err := c.httpClient.Do(httpReq)
 	if err != nil {
 		// If we got an error, and the context has been canceled,
 		// the context's error is probably more useful.
