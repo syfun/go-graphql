@@ -78,26 +78,22 @@ type Response struct {
 // Example:
 //
 // If response data is
-// ```
-// {
-//   "data": {
-// 	   "person": {
-// 	     "name": "Jack"
-// 		 "age": 26
-// 	   }
-//   },
-// 	 "error": null
-// }
-// ```
+//  {
+//    "data": {
+//  	   "person": {
+//  	     "name": "Jack"
+//  		 "age": 26
+//  	   }
+//    },
+//  	 "error": null
+//  }
 //
-// ```
-// type Person struct {
-//   name string
-//   age int
-// }
-// ```
-// var p Person
-// r.Guess("person", p)
+//  type Person struct {
+//    name string
+//    age int
+//  }
+//  var p Person
+//  r.Guess("person", p)
 func (r *Response) Guess(name string, v interface{}) error {
 	if r.Data == nil {
 		return errors.New("guess error: has no data")
